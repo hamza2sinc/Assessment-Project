@@ -13,6 +13,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    is_owner = Column(Boolean, default=False)  # Added for owner-only access
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
