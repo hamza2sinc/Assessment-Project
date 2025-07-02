@@ -1,4 +1,4 @@
-# app/core/database.py
+# app/core/database.pyAdd commentMore actions
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker

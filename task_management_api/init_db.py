@@ -1,5 +1,6 @@
 # run.py
 from app.core.database import Base, engine
+from app import models  # This will load __init__.py and bring in both User and Task
 from app.models.user import User
 from app.models.task import Task
 
