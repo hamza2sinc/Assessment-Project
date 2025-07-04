@@ -517,6 +517,9 @@
             <div class="register-link">
                 Don't have an account? <a href="/register">Create account</a>
             </div>
+            <div class="logout-link">
+                <a href="#" onclick="logout()">Logout</a>
+            </div>
         </div>
     </div>
 
@@ -615,7 +618,8 @@
                 const formData = new FormData();
                 formData.append('username', document.getElementById('username').value);
                 formData.append('password', document.getElementById('password').value);
-                
+                formData.append('remember', document.getElementById('remember').checked);
+
                 const response = await fetch('/login', {
                     method: 'POST',
                     body: formData
@@ -665,30 +669,29 @@
             element.style.animation = `slideUp 0.6s ease forwards ${index * 0.1 + 0.3}s`;
         });
 
-        // Check if user is already logged in
-        window.addEventListener('load', () => {
+        // Logout function to clear token and refresh
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('token_type');
+            window.location.href = '/login';
+        }
+
+        // Check token on page load but don't redirect automatically
+        window.addEventListener('load', async () => {
             const token = localStorage.getItem('access_token');
             if (token) {
-                // Verify token validity by making a test request
-                fetch('/protected', {
+                const response = await fetch('/protected', {
+                    method: 'GET',
                     headers: {
-                        'Authorization': `Bearer ${token}`
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
                     }
-                })
-                .then(response => {
-                    if (response.ok) {
-                        window.location.href = '/dashboard';
-                    } else {
-                        // Token invalid, remove it
-                        localStorage.removeItem('access_token');
-                        localStorage.removeItem('token_type');
-                    }
-                })
-                .catch(() => {
-                    // Network error or token invalid
+                });
+                if (!response.ok) {
                     localStorage.removeItem('access_token');
                     localStorage.removeItem('token_type');
-                });
+                }
+                // Do not redirect here; let the form handle login
             }
         });
     </script>

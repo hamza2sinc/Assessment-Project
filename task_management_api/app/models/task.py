@@ -3,6 +3,17 @@ from sqlalchemy import Column, Integer, String, Enum, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from enum import Enum as PyEnum
+
+class TaskStatus(PyEnum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+class TaskPriority(PyEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
 
 class Task(Base):
     __tablename__ = "tasks"
