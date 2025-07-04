@@ -1,0 +1,158 @@
+# app/main.py
+import logging
+from fastapi import FastAPI, Depends, HTTPException, Form, status, Request
+from fastapi.responses import HTMLResponse
+from app.core.database import get_db
+from app.models.user import User
+from sqlalchemy.orm import Session
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
+import os
+from dotenv import load_dotenv
+# app/main.py (relevant section)
+from app.core.database import get_db, engine
+from app.models.task import Task, TaskStatus, TaskPriority
+from app.schemas.task import TaskCreate, TaskUpdate
+from sqlalchemy.orm import Session
+from typing import List
+# Load environment variables from .env file
+load_dotenv()
+
+app = FastAPI()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# JWT Configuration from environment variables
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")  # Fallback for safety
+ALGORITHM = os.getenv("ALGORITHM", "HS256")  # Fallback to default
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))  # Fallback to 30 minutes
+
+
+
+# Dependency to get the current user (for protected routes)
+async def get_current_user(request: Request, db: Session = Depends(get_db)):
+    authorization = request.headers.get("Authorization")
+    logger.info(f"Received Authorization header: {authorization}")  # Log the header
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token required", headers={"WWW-Authenticate": "Bearer"})
+    token = authorization.split(" ")[1]  # Extract token after "Bearer "
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        logger.info(f"Decoded payload: {payload}")  # Log decoded payload
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except JWTError as e:
+        logger.error(f"JWT Error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.post("/register")
+def register(email: str = Form(...), username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    try:
+        existing_user = db.query(User).filter((User.email == email) | (User.username == username)).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email or username already registered")
+        hashed_password = pwd_context.hash(password)
+        new_user = User(email=email, username=username, hashed_password=hashed_password)
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {"message": "User registered successfully", "id": new_user.id, "email": new_user.email}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+@app.post("/login")
+async def login(username: str = Form(...), password: str = Form(...), remember_me: bool = Form(False), db: Session = Depends(get_db)):
+    try:
+        user = db.query(User).filter(User.username == username).first()
+        if not user or not pwd_context.verify(password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="Incorrect username or password")
+        access_token_expires = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES if not remember_me else 1440)
+        access_token = jwt.encode({"sub": user.username, "exp": access_token_expires}, SECRET_KEY, algorithm=ALGORITHM)
+        return {"access_token": access_token, "token_type": "bearer", "message": "Login successful"}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+@app.get("/register", response_class=HTMLResponse)
+def register_form():
+    with open("app/static/register.html", "r") as file:
+        html_content = file.read()
+    return HTMLResponse(content=html_content)
+
+@app.get("/login", response_class=HTMLResponse)
+def login_form():
+    with open("app/static/login.html", "r") as file:
+        html_content = file.read()
+    return HTMLResponse(content=html_content)
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def read_dashboard():  # Removed Depends(get_current_user)
+    with open("app/static/dashboard.html", "r") as f:
+        return f.read()
+
+@app.get("/protected")
+def protected_route(current_user: User = Depends(get_current_user)):
+    return {"message": f"Welcome, {current_user.username}! This is a protected route."}
+
+
+# app/main.py (update the read_tasks endpoint)
+@app.get("/tasks/")
+def read_tasks(db: Session = Depends(get_db)):
+    tasks = db.query(Task).all()
+    if not tasks:
+        return []  # Return empty list if no tasks
+    return [
+        {
+            "id": task.id,
+            "title": task.title,
+            "description": task.description if task.description else "",
+            "status": task.status,  # Use directly as string
+            "priority": task.priority,  # Use directly as string
+            "category": task.category if task.category else "",
+            "due_date": task.due_date.isoformat() if task.due_date else "",
+            "user_id": task.user_id,
+            "created_at": task.created_at.isoformat(),
+            "updated_at": task.updated_at.isoformat() if task.updated_at else ""
+        }
+        for task in tasks
+    ]
+@app.post("/tasks/", response_model=dict)
+def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+    db_task = Task(**task.dict(), user_id=1)  # Placeholder user_id
+    db.add(db_task)
+    db.commit()
+    db.refresh(db_task)
+    return {"message": "Task created", "task_id": db_task.id}
+
+@app.put("/tasks/{task_id}", response_model=dict)
+def update_task(task_id: int, task: TaskUpdate, db: Session = Depends(get_db)):
+    db_task = db.query(Task).filter(Task.id == task_id).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    for key, value in task.dict(exclude_unset=True).items():
+        setattr(db_task, key, value)
+    db.commit()
+    db.refresh(db_task)
+    return {"message": "Task updated", "task_id": db_task.id}
+
+@app.delete("/tasks/{task_id}", response_model=dict)
+def delete_task(task_id: int, db: Session = Depends(get_db)):
+    db_task = db.query(Task).filter(Task.id == task_id).first()
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    db.delete(db_task)
+    db.commit()
+    return {"message": "Task deleted"}
