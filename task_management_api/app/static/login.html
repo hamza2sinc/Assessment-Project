@@ -604,62 +604,40 @@
         }
 
         // Form submission
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const submitBtn = document.getElementById('submitBtn');
-            const messageDiv = document.getElementById('message');
-            
-            // Add loading state
-            submitBtn.classList.add('loading');
-            submitBtn.textContent = '';
-            
-            try {
-                const formData = new FormData();
-                formData.append('username', document.getElementById('username').value);
-                formData.append('password', document.getElementById('password').value);
-                formData.append('remember', document.getElementById('remember').checked);
+        document.getElementById("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-                const response = await fetch('/login', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    // Store JWT token
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('token_type', data.token_type);
-                    
-                    // Show success message
-                    messageDiv.textContent = 'Login successful! Redirecting...';
-                    messageDiv.className = 'success show';
-                    
-                    // Redirect to dashboard after 1.5 seconds
-                    setTimeout(() => {
-                        window.location.href = '/dashboard';
-                    }, 1500);
-                } else {
-                    // Show error message
-                    messageDiv.textContent = data.detail || 'Login failed. Please try again.';
-                    messageDiv.className = 'error show';
-                }
-                
-            } catch (error) {
-                messageDiv.textContent = 'Network error. Please check your connection.';
-                messageDiv.className = 'error show';
-            } finally {
-                // Remove loading state
-                submitBtn.classList.remove('loading');
-                submitBtn.textContent = 'Sign In';
-                
-                // Hide message after 5 seconds
-                setTimeout(() => {
-                    messageDiv.classList.remove('show');
-                }, 5000);
-            }
+    const form = e.target;
+    const username = form.username.value;
+    const password = form.password.value;
+
+    const formData = new URLSearchParams();
+    formData.append("username", username);
+    formData.append("password", password);
+    formData.append("grant_type", "password");
+    formData.append("scope", "me tasks");
+
+    try {
+        const response = await fetch("/token", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: formData
         });
+
+        if (!response.ok) {
+            throw new Error("Login failed");
+        }
+
+        const data = await response.json();
+        localStorage.setItem("access_token", data.access_token);
+        localStorage.setItem("token_type", data.token_type);
+        window.location.href = "/dashboard";
+    } catch (error) {
+        alert("Login failed: " + error.message);
+    }
+});
 
         // Add smooth entrance animation for form elements
         const formElements = document.querySelectorAll('.form-group, .remember-forgot, .login-button');
